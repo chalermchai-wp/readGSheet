@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Sheets API Quickstart</title>
+  <meta charset="utf-8" />
+  <script src="https://apis.google.com/js/platform.js?onload=init" async defer></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script type="text/javascript" src="./node_modules/crypto-js/crypto-js.js"></script>
+</head>
+
+<body>
+  <script>
+    var arrayResultGSheet = null
+    var round = null
+    var regex = /([รอบ ])+\d*/g;
+
+    var KEY_ENCRYPT = "KEY"
+
+    function encrypt(msg) {
+      return CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA256(msg, this.KEY_ENCRYPT))
+    }
+
+    /**
+     * Sample JavaScript code for sheets.spreadsheets.get
+     * See instructions for running APIs Explorer code samples locally:
+     * https://developers.google.com/explorer-help/code-samples#javascript
+     */
+
+    function authenticate() {
+      return gapi.auth2.getAuthInstance()
+        .signIn({ scope: "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/spreadsheets.readonly" })
+        .then(function () { console.log("Sign-in successful"); },
+          function (err) { console.error("Error signing in", err); });
+    }
+    function loadClient() {
+      gapi.client.setApiKey("INSERT API_KEY");
+      return gapi.client.load("https://sheets.googleapis.com/$discovery/rest?version=v4")
+        .then(function () { console.log("GAPI client loaded for API"); },
+          function (err) { console.error("Error loading GAPI client for API", err); });
+    }
+    // Make sure the client is loaded and sign-in is complete before calling this method.
+    function execute() {
+      return gapi.client.sheets.spreadsheets.values.get({
+        "spreadsheetId": "INSERT SPREADSHEETID",
+        "range": "INSERT RANGE"
+      })
+        .then(function (response) {
+          // Handle the results here (response.result has the parsed body).
+          this.arrayResultGSheet = response.result.values
+
+          // หาจำนวนรอบทั้งหมด เรียงจากรอบท้ายสุด
+          this.round = arrayResultGSheet.map((arr, i) => ({ index: i, value: arr })).filter(arr => (arr.value.length === 1) && (arr.value[0].match(regex))).reverse()
+
+          const selectId = document.getElementById('round');
+          removeOptionsAll(selectId)  // ลบ options ของเก่าออกก่อน
+
+          for (var i = 0; i <= round.length - 1; i++) {
+            var opt = document.createElement('option');
+            opt.value = round[i].index;
+            opt.innerHTML = round[i].value;
+            selectId.appendChild(opt);
+          }
+
+        },
+          function (err) { console.error("Execute error", err); });
+    }
+
+    function removeOptionsAll(selectBox) {
+      while (selectBox.options.length > 0) {
+        selectBox.options.remove(0);
+      }
+    }
+
+    function checkStatus(status) {
+      if (status.toLocaleLowerCase().indexOf("approve") >= 0) {
+        return 1
+      } else {
+        return 0
+      }
+    }
+
+    function getCurrentDate() {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      let mm = ('0' + (today.getMonth() + 1)).slice(-2) // Months start at 0!
+      let dd = ('0' + today.getDate()).slice(-2)
+      return "" + yyyy + mm + dd
+    }
+
+    function generateData(response) {
+      var data = ""
+      data += "H|" + getCurrentDate() + "\n"
+      for (let i = 0; i < response.length; i++) {
+        data += response[i] + '\n'
+      }
+      data += "F|" + response.length
+
+      return data
+    }
+
+    function downloadURL(url, name) {
+      var link = document.createElement("a");
+      link.download = name;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      delete link;
+    }
+
+    function downloadFile(data, filename) {
+      var data = generateData(data);
+      var blob = new Blob([data], { type: 'text/csv' });
+      var url = window.URL.createObjectURL(blob);
+      downloadURL(url, filename + ".csv");
+    }
+
+    function sendRequest(payload) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/getFileData", true);
+      xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+      xhr.onreadystatechange = function (data) {
+        if (xhr.readyState == 4 && xhr.status === 200) {
+          var response = JSON.parse(xhr.response)
+
+          downloadFile(response, "REGIS_RESULT_" + getCurrentDate())
+        }
+      };
+      xhr.send(JSON.stringify(payload));
+    }
+
+    function readRound() {
+      var arrCurrentRound = []
+
+      const selectId = select = document.getElementById('round');
+
+      var currentRound = round.findIndex(arr => arr.index === +selectId.value) // หา index รอบปัจจุบัน
+      var nextRound = currentRound - 1  // หา index รอบถัดไป
+      var startIndex = round[currentRound].index + 2  // +2 เป็นการข้ามหัวตาราง และรอบ
+      var endIndex = nextRound < 0 ? arrayResultGSheet.length : round[nextRound].index  // หา index สุดท้ายที่ต้องวนลูป
+
+      for (var i = startIndex; i < endIndex; i++) {
+        if (arrayResultGSheet[i].length > 0) {
+          arrCurrentRound.push(arrayResultGSheet[i]) // ดึงข้อมูลในรอบปัจจุบันแยกมาใส่ array ไว้
+        }
+      }
+
+      // จัดการค่า array ถ้าตัวไหนไม่มีค่าให้เป็น null และตัดแถวที่เป็นหัวตารางออก เผื่อผิดพลาด
+      arrCurrentRound = arrCurrentRound.map(arr => ({
+        username: arr.length > 1 ? arr[0] : null,
+        cid: arr.length > 2 ? encrypt(arr[1]) : null,
+        telNo: arr.length > 3 ? encrypt(arr[2]) : null,
+        branchId: arr.length > 4 ? arr[3] : null,
+        remark: arr.length > 5 ? arr[4] : null,
+        status: arr.length > 6 ? arr[5] : null
+      })).filter(arr => (arr.username && arr.cid.toLocaleLowerCase().trim() != "cid"))
+
+      sendRequest(arrCurrentRound)
+
+    }
+    gapi.load("client:auth2", function () {
+      gapi.auth2.init({ client_id: "INSERT CLIENT_ID" });
+    });
+  </script>
+
+  <button onclick="authenticate().then(loadClient).then(execute)">authorize and load</button>
+  <button onclick="readRound()">execute</button>
+
+  <form>
+    <label for="round">Select a round</label>
+    <select id="round">
+    </select>
+  </form>
+
+</body>
+
+</html>

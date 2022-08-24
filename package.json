@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "crypto-js": "^4.1.1",
+    "express": "^4.18.1",
+    "googleapis": "^107.0.0",
+    "mysql": "^2.18.1",
+    "promise-mysql": "^5.2.0"
+  },
+  "name": "genfilemerchantconfirm",
+  "version": "1.0.0",
+  "main": "start.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "node start.js"
+  },
+  "author": "Chalermchai Wongfiang",
+  "license": "ISC",
+  "description": ""
+}
